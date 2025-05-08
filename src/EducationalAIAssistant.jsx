@@ -1,11 +1,11 @@
 import React, { useState, useRef } from "react";
 import axios from "axios";
-
+import mammoth from "mammoth";
 import "./EducationalAIAssistant.css";
 
 function EducationalAIAssistant() {
   // Options for each category that users can select
-  const promptOptions = { 
+  const promptOptions = {
     contentType: [
       {
         id: "syllabus",
@@ -89,9 +89,22 @@ function EducationalAIAssistant() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Editable response states
+  const [editableContent, setEditableContent] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const editorRef = useRef(null);
+
   // Handle checkbox changes
   const handleCheckboxChange = (category, optionId) => {
     setSelectedOptions((prev) => {
+      // For questionCount, only allow one selection
+      if (category === "questionCount") {
+        return {
+          ...prev,
+          [category]: prev[category].includes(optionId) ? [] : [optionId],
+        };
+      }
+
       const updatedCategory = prev[category].includes(optionId)
         ? prev[category].filter((id) => id !== optionId)
         : [...prev[category], optionId];
@@ -126,19 +139,10 @@ function EducationalAIAssistant() {
   // Extract text based on file type
   const extractTextFromFile = async (file) => {
     const fileType = file.type;
-    const fileText = await readFileAsText(file);
 
-    // For basic text files
+    // For plain text files
     if (fileType === "text/plain") {
-      return fileText;
-    }
-
-    // For PDF files
-    if (fileType === "application/pdf") {
-      alert(
-        "PDF processing requires a server-side component or PDF.js. Using file name for demo purposes."
-      );
-      return `[Content extracted from PDF: ${file.name}]`;
+      return await readFileAsText(file);
     }
 
     // For Word documents
@@ -147,10 +151,19 @@ function EducationalAIAssistant() {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       fileType === "application/msword"
     ) {
-      alert(
-        "Word document processing requires a server-side component. Using file name for demo purposes."
-      );
-      return `[Content extracted from Word doc: ${file.name}]`;
+      try {
+        const arrayBuffer = await readFileAsArrayBuffer(file);
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        return result.value;
+      } catch (error) {
+        console.error("Error processing Word document:", error);
+        return `[Error extracting content from ${file.name}]`;
+      }
+    }
+
+    // For PDF files
+    if (fileType === "application/pdf") {
+      return `[PDF support requires additional setup. File name: ${file.name}]`;
     }
 
     // For other file types
@@ -164,6 +177,16 @@ function EducationalAIAssistant() {
       reader.onload = (e) => resolve(e.target.result);
       reader.onerror = (e) => reject(e);
       reader.readAsText(file);
+    });
+  };
+
+  // Read file as ArrayBuffer (for Word docs)
+  const readFileAsArrayBuffer = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(e);
+      reader.readAsArrayBuffer(file);
     });
   };
 
@@ -210,7 +233,8 @@ function EducationalAIAssistant() {
         else prompt += ".";
       });
     }
-    // Add after the logic for `questionType` in `buildPrompt`
+
+    // Add question count
     if (selectedOptions.questionCount.length > 0) {
       const countOption = promptOptions.questionCount.find(
         (opt) => opt.id === selectedOptions.questionCount[0]
@@ -218,6 +242,7 @@ function EducationalAIAssistant() {
       prompt += ` Generate ${countOption.value} questions.`;
     }
 
+    // Add answer option
     if (selectedOptions.includeAnswer.includes("includeAnswer")) {
       prompt += " Include answers in the output.";
     }
@@ -237,6 +262,7 @@ function EducationalAIAssistant() {
     // Add the generated prompt to the chat as a user message
     const newMessages = [...messages, { role: "user", content: prompt }];
     setMessages(newMessages);
+    setIsEditing(false);
 
     setIsLoading(true);
 
@@ -265,6 +291,9 @@ function EducationalAIAssistant() {
         { role: "assistant", content: aiMessage },
       ]);
 
+      // Set the content for editing
+      setEditableContent(aiMessage);
+
       /* Uncomment this section if you want to use Claude API instead
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -284,22 +313,28 @@ function EducationalAIAssistant() {
       });
   
       const data = await response.json();
+      const aiMessage = data.content[0].text;
       setMessages((prevMessages) => [
         ...prevMessages,
-        { role: "assistant", content: data.content[0].text },
+        { role: "assistant", content: aiMessage },
       ]);
+      setEditableContent(aiMessage);
       */
     } catch (error) {
       console.error("Error calling AI API:", error);
+      const errorMessage = `Error: ${
+        error.response?.data?.error?.message || error.message
+      }`;
+
       setMessages((prevMessages) => [
         ...prevMessages,
         {
           role: "assistant",
-          content: `Error: ${
-            error.response?.data?.error?.message || error.message
-          }`,
+          content: errorMessage,
         },
       ]);
+
+      setEditableContent(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -331,16 +366,90 @@ function EducationalAIAssistant() {
       contentType: [],
       taxonomyLevel: [],
       questionType: [],
+      questionCount: [],
+      includeAnswer: [],
     });
     setUploadedFile(null);
     setFileContent("");
     setMessages([]);
+    setEditableContent("");
+    setIsEditing(false);
+  };
+
+  // Handle editing toggle
+  const toggleEditing = () => {
+    // Make sure we're using the most recent AI message when toggling edit mode
+    if (!isEditing && messages.length > 0) {
+      const assistantMessages = messages.filter(
+        (msg) => msg.role === "assistant"
+      );
+      if (assistantMessages.length > 0) {
+        const lastAiMessage = assistantMessages[assistantMessages.length - 1];
+        setEditableContent(lastAiMessage.content);
+      }
+    }
+    setIsEditing(!isEditing);
+  };
+
+  // Save edited content
+  const saveEditedContent = () => {
+    if (messages.length > 0) {
+      // Update the last AI message with the edited content
+      setMessages((prevMessages) => {
+        const updatedMessages = [...prevMessages];
+        const lastAiMessageIndex = updatedMessages
+          .map((msg, index) => ({ role: msg.role, index }))
+          .filter((item) => item.role === "assistant")
+          .pop()?.index;
+
+        if (lastAiMessageIndex !== undefined) {
+          updatedMessages[lastAiMessageIndex] = {
+            ...updatedMessages[lastAiMessageIndex],
+            content: editableContent,
+          };
+        }
+
+        return updatedMessages;
+      });
+    }
+
+    setIsEditing(false);
+  };
+
+  // Handle content change in the editor
+  const handleContentChange = (e) => {
+    setEditableContent(e.target.value);
+  };
+
+  // Copy content to clipboard
+  const copyToClipboard = () => {
+    navigator.clipboard
+      .writeText(editableContent)
+      .then(() => {
+        alert("Content copied to clipboard!");
+      })
+      .catch((err) => {
+        console.error("Failed to copy content: ", err);
+      });
+  };
+
+  // Export content as text file
+  const exportAsFile = () => {
+    const blob = new Blob([editableContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "generated-questions.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div className="educational-ai-assistant">
       <div className="app-header">
-        <h1>Exam Generator name subject to change</h1>
+        <h1>AI Exam Generator</h1>
       </div>
 
       <div className="main-container">
@@ -405,30 +514,77 @@ function EducationalAIAssistant() {
         </div>
 
         <div className="results-panel">
-          <h2>Generated Questions</h2>
-          <div className="messages-container">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`message ${msg.role === "user" ? "user" : "ai"}`}
-              >
-                {msg.role === "user" ? (
-                  <details>
-                    <summary>Prompt Details</summary>
-                    <div className="prompt-content">{msg.content}</div>
-                  </details>
-                ) : (
-                  <div className="ai-response">{msg.content}</div>
-                )}
-              </div>
-            ))}
-            {isLoading && (
-              <div className="loading-indicator">
-                <div className="loading-spinner"></div>
-                <div>Generating questions...</div>
-              </div>
-            )}
+          <div className="results-header">
+            <h2>Generated Questions</h2>
+            {messages.length > 0 &&
+              messages.some((msg) => msg.role === "assistant") && (
+                <div className="editor-controls">
+                  {isEditing ? (
+                    <button
+                      className="control-button save"
+                      onClick={saveEditedContent}
+                    >
+                      Save Changes
+                    </button>
+                  ) : (
+                    <button
+                      className="control-button edit"
+                      onClick={toggleEditing}
+                    >
+                      Edit Response
+                    </button>
+                  )}
+                  <button
+                    className="control-button copy"
+                    onClick={copyToClipboard}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    className="control-button export"
+                    onClick={exportAsFile}
+                  >
+                    Export
+                  </button>
+                </div>
+              )}
           </div>
+
+          {isEditing ? (
+            <div className="editable-canvas">
+              <textarea
+                ref={editorRef}
+                value={editableContent}
+                onChange={handleContentChange}
+                className="editor-textarea"
+                placeholder="The AI response will appear here and be editable."
+              />
+            </div>
+          ) : (
+            <div className="messages-container">
+              {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`message ${msg.role === "user" ? "user" : "ai"}`}
+                >
+                  {msg.role === "user" ? (
+                    <details>
+                      <summary>Prompt Details</summary>
+                      <div className="prompt-content">{msg.content}</div>
+                    </details>
+                  ) : (
+                    <div className="ai-response">{msg.content}</div>
+                  )}
+                </div>
+              ))}
+              {isLoading && (
+                <div className="loading-indicator">
+                  <div className="loading-spinner"></div>
+                  <div>Generating questions...</div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

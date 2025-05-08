@@ -1,5 +1,6 @@
 import React from "react";
 import EducationalAIAssistant from "./EducationalAIAssistant";
+import "./App.css";
 
 function App() {
   return (

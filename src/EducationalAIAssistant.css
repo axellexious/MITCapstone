@@ -175,13 +175,69 @@
   background-color: #fff;
 }
 
-.results-panel h2 {
-  margin-top: 0;
-  color: #2c3e50;
-  font-size: 1.2rem;
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 15px;
   padding-bottom: 5px;
   border-bottom: 1px solid #e0e0e0;
+}
+
+.results-header h2 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.2rem;
+}
+
+.editor-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.control-button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.control-button.edit {
+  background-color: #3498db;
+  color: white;
+}
+
+.control-button.edit:hover {
+  background-color: #2980b9;
+}
+
+.control-button.save {
+  background-color: #27ae60;
+  color: white;
+}
+
+.control-button.save:hover {
+  background-color: #219653;
+}
+
+.control-button.copy {
+  background-color: #f39c12;
+  color: white;
+}
+
+.control-button.copy:hover {
+  background-color: #d35400;
+}
+
+.control-button.export {
+  background-color: #9b59b6;
+  color: white;
+}
+
+.control-button.export:hover {
+  background-color: #8e44ad;
 }
 
 .messages-container {
@@ -246,6 +302,39 @@
 
 .message.ai .ai-response {
   white-space: pre-wrap;
+  color: #333; /* Ensure text is dark and readable */
+}
+
+/* Editable Canvas */
+.editable-canvas {
+  width: 100%;
+  height: 500px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-textarea {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 15px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 1rem;
+  color: #333 !important; /* Force dark text color */
+  background-color: white;
+  resize: none;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.editor-textarea:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
 }
 
 /* Loading Indicator */
@@ -309,5 +398,16 @@
 
   .action-buttons {
     flex-direction: column;
+  }
+
+  .editor-controls {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-top: 10px;
+  }
+
+  .results-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
