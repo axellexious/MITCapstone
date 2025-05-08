@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import axios from "axios";
 import mammoth from "mammoth";
+import TargetSectionInfo from "./TargetSectionInfo";
 import "./EducationalAIAssistant.css";
 
 function EducationalAIAssistant() {
@@ -190,6 +191,91 @@ function EducationalAIAssistant() {
     });
   };
 
+  /**
+   * Process document content to focus on specific sections based on user selection
+   * @param {string} content - The full document content
+   * @param {Object} options - Processing options
+   * @returns {string} Processed content focusing on relevant sections
+   */
+  const processTargetedContent = (content, options = {}) => {
+    // Default to processing the entire document if no specific options
+    if (!options.targetSection) {
+      return content;
+    }
+
+    // Define section markers based on common document structures
+    const sectionMarkers = {
+      introduction: [/introduction/i, /overview/i, /background/i],
+      mainContent: [/main\s+content/i, /body/i, /content/i],
+      learningObjectives: [
+        /learning\s+objectives/i,
+        /objectives/i,
+        /goals/i,
+        /outcomes/i,
+      ],
+      assessment: [
+        /assessment/i,
+        /evaluation/i,
+        /grading/i,
+        /tests/i,
+        /exams/i,
+      ],
+      conclusion: [/conclusion/i, /summary/i, /closing/i],
+    };
+
+    // Target specific section
+    const targetPatterns = sectionMarkers[options.targetSection];
+    if (!targetPatterns) {
+      return content;
+    }
+
+    // Try to identify sections based on headings or markers
+    const lines = content.split("\n");
+    let inTargetSection = false;
+    let targetContent = [];
+    let currentSection = "";
+
+    for (let line of lines) {
+      // Check if line looks like a section heading
+      const isHeading =
+        /^\s*(?:[A-Z][a-z]*\s*)+[:.]\s*$/.test(line) ||
+        /^\s*(?:[IVX]+\.|[0-9]+\.|[A-Z]\.)\s+/.test(line) ||
+        /^#+\s+/.test(line); // Markdown style
+
+      if (isHeading) {
+        // Determine which section this heading represents
+        let matchedSection = "";
+        for (const [section, patterns] of Object.entries(sectionMarkers)) {
+          if (patterns.some((pattern) => pattern.test(line))) {
+            matchedSection = section;
+            break;
+          }
+        }
+
+        if (matchedSection) {
+          currentSection = matchedSection;
+          inTargetSection = currentSection === options.targetSection;
+        }
+      }
+
+      // Collect content if we're in the target section
+      if (inTargetSection) {
+        targetContent.push(line);
+      }
+    }
+
+    // If we didn't find the section with headers, try keyword-based approach
+    if (targetContent.length === 0) {
+      // Create a focused prompt instead
+      return `Please focus ONLY on the ${options.targetSection
+        .replace(/([A-Z])/g, " $1")
+        .toLowerCase()} 
+      aspects of the following content:\n\n${content}`;
+    }
+
+    return targetContent.join("\n");
+  };
+
   // Build prompt from selected options
   const buildPrompt = () => {
     let prompt = "I have educational content that I need to process. ";
@@ -247,9 +333,25 @@ function EducationalAIAssistant() {
       prompt += " Include answers in the output.";
     }
 
-    // Add the file content if available
+    // Add the file content if available, using targeted processing
     if (fileContent) {
-      prompt += "\n\nHere is the content to process:\n\n" + fileContent;
+      // Determine which section to target based on selected content type
+      let targetSection = null;
+
+      if (selectedOptions.contentType.includes("syllabus")) {
+        targetSection = "learningObjectives";
+      } else if (selectedOptions.contentType.includes("specs")) {
+        targetSection = "assessment";
+      } else if (selectedOptions.contentType.includes("lecture")) {
+        targetSection = "mainContent";
+      }
+
+      // Process the content with targeting if applicable
+      const processedContent = targetSection
+        ? processTargetedContent(fileContent, { targetSection })
+        : fileContent;
+
+      prompt += "\n\nHere is the content to process:\n\n" + processedContent;
     }
 
     return prompt;
@@ -293,33 +395,6 @@ function EducationalAIAssistant() {
 
       // Set the content for editing
       setEditableContent(aiMessage);
-
-      /* Uncomment this section if you want to use Claude API instead
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": "YOUR_ANTHROPIC_API_KEY", // Replace with actual API key
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-3-7-sonnet-20250219",
-          max_tokens: 1000,
-          messages: newMessages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          })),
-        }),
-      });
-  
-      const data = await response.json();
-      const aiMessage = data.content[0].text;
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        { role: "assistant", content: aiMessage },
-      ]);
-      setEditableContent(aiMessage);
-      */
     } catch (error) {
       console.error("Error calling AI API:", error);
       const errorMessage = `Error: ${
@@ -449,7 +524,8 @@ function EducationalAIAssistant() {
   return (
     <div className="educational-ai-assistant">
       <div className="app-header">
-        <h1>AI Exam Generator</h1>
+        <h1>Smart AI Exam Generator</h1>
+        <div className="subtitle">With Targeted Document Analysis</div>
       </div>
 
       <div className="main-container">
@@ -478,10 +554,17 @@ function EducationalAIAssistant() {
                   : "No file selected"}
               </span>
             </div>
+
+            {uploadedFile && (
+              <TargetSectionInfo contentType={selectedOptions.contentType} />
+            )}
           </div>
 
           <div className="options-container">
-            {renderCheckboxGroup("contentType", "Content Type")}
+            {renderCheckboxGroup(
+              "contentType",
+              "Content Type (Controls Document Analysis)"
+            )}
             {renderCheckboxGroup("taxonomyLevel", "Bloom's Taxonomy Level")}
             {renderCheckboxGroup("questionType", "Question Format")}
             {renderCheckboxGroup("questionCount", "Number of Questions")}
