@@ -2,8 +2,6 @@
 
 A React-based application that leverages AI to generate customized educational questions and assessments from uploaded document content.
 
-![Smart AI Exam Generator](https://github.com/yourusername/smart-ai-exam-generator/raw/main/screenshot.png)
-
 ## Features
 
 ### 1. Document Analysis and Processing
